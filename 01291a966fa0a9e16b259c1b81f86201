@@ -1,36 +1,55 @@
 -- ==========================================
--- MEOW — Fixed Safe Key System & UI
+-- MEOW — Secure HWID Locked Key System & UI
 -- ==========================================
 
-local success, input_key = pcall(function()
+local hwid = ""
+pcall(function()
+    hwid = gethwid and gethwid() or identifyexecutor and identifyexecutor() or "UnknownDevice"
+end)
+
+local lockedFile = "meow_device_lock.txt"
+local isAlreadyLocked = false
+pcall(function()
+    if isfile and isfile(lockedFile) then
+        if readfile(lockedFile) == hwid then
+            isAlreadyLocked = true
+        end
+    end
+end)
+
+local successGet, rawKeys = pcall(function()
+    return game:HttpGet("https://raw.githubusercontent.com/krypticlabx/myloves-/main/keys.json")
+end)
+
+if not successGet then
+    game:GetService("Players").LocalPlayer:Kick("\n[MEOW ERROR]\nHindi ma-load ang key database!")
+    return
+end
+
+local HttpService = game:GetService("HttpService")
+local ValidKeys = {}
+pcall(function()
+    ValidKeys = HttpService:JSONDecode(rawKeys)
+end)
+
+local successKey, input_key = pcall(function()
     return getgenv().script_key
 end)
 
-local ValidKeys = {
-    ["Key858892hshakakk"] = true,
-    ["Keyiiwbebdojhwh72"] = true,
-    ["Keywu72802990jsh"] = true,
-    ["Keyiwbeowosi8292"] = true,
-    ["Key072782jhhakikja"] = true,
-    ["Key11hdjeinsnjjsjko"] = true,
-    ["Key892jejgeuiwnnk"] = true,
-    ["Key88901nsjjeuwiw"] = true,
-    ["Key772289jnbhhwlm"] = true,
-    ["Key90011jsjeikwkwn"] = true,
-    ["Key888892929nnsjjjs"] = true,
-    ["Key82829922992288"] = true,
-    ["Key81899jsjkalkkajj"] = true,
-}
-
--- I-clear agad ang getgenv para sa seguridad
 pcall(function()
     getgenv().script_key = nil
 end)
 
-if not success or not input_key or not ValidKeys[input_key] then
+if not successKey or not input_key or not ValidKeys[input_key] then
     game:GetService("Players").LocalPlayer:Kick("\n[ACCESS DENIED]\nWalang Script Key o Maling Key!")
     return
 end
+
+pcall(function()
+    if writefile and not isfile(lockedFile) then
+        writefile(lockedFile, hwid)
+    end
+end)
 
 local CoreGui = game:GetService("CoreGui")
 local Players = game:GetService("Players")
@@ -49,129 +68,82 @@ ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 230, 0, 180) -- Itinaasan ko para magkasya lahat ng buttons
+MainFrame.Size = UDim2.new(0, 200, 0, 130)
 MainFrame.Position = UDim2.new(0.05, 0, 0.5, 0)
-MainFrame.BackgroundColor3 = Color3.fromRGB(24, 24, 28)
-MainFrame.BorderSizePixel = 0
+MainFrame.BackgroundColor3 = Color3.fromRGB(26, 26, 30)
 MainFrame.Active = true
 MainFrame.Draggable = true
 MainFrame.Parent = ScreenGui
 
 local MainCorner = Instance.new("UICorner")
-MainCorner.CornerRadius = UDim.new(0, 16)
+MainCorner.CornerRadius = UDim.new(0, 14)
 MainCorner.Parent = MainFrame
 
 local TitleBar = Instance.new("Frame")
-TitleBar.Size = UDim2.new(1, 0, 0, 42)
-TitleBar.BackgroundColor3 = Color3.fromRGB(35, 35, 42)
+TitleBar.Size = UDim2.new(1, 0, 0, 38)
+TitleBar.BackgroundColor3 = Color3.fromRGB(38, 38, 45)
 TitleBar.Parent = MainFrame
 
-local TitleCorner = Instance.new("UICorner")
-TitleCorner.CornerRadius = UDim.new(0, 16)
-TitleCorner.Parent = TitleBar
-
 local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, -20, 1, 0)
-Title.Position = UDim2.new(0, 15, 0, 0)
+Title.Size = UDim2.new(1, 0, 1, 0)
 Title.BackgroundTransparency = 1
-Title.Text = "MEOW"
+Title.Text = "MEOW (SECURED)"
 Title.TextColor3 = Color3.fromRGB(255, 215, 0)
-Title.TextSize = 17
+Title.TextSize = 16
 Title.Font = Enum.Font.GothamBold
-Title.TextXAlignment = Enum.TextXAlignment.Center
 Title.Parent = TitleBar
 
 local StatusDot = Instance.new("Frame")
-StatusDot.Size = UDim2.new(0, 11, 0, 11)
-StatusDot.Position = UDim2.new(0, 15, 0, 55)
-StatusDot.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
-StatusDot.BorderSizePixel = 0
+StatusDot.Size = UDim2.new(0, 10, 0, 10)
+StatusDot.Position = UDim2.new(0, 15, 0, 50)
+StatusDot.BackgroundColor3 = Color3.fromRGB(50, 220, 90)
 StatusDot.Parent = MainFrame
 
 local DotCorner = Instance.new("UICorner")
-DotCorner.CornerRadius = UDim.new(0, 6)
+DotCorner.CornerRadius = UDim.new(0, 5)
 DotCorner.Parent = StatusDot
-
-local Status = Instance.new("TextLabel")
-Status.Size = UDim2.new(1, -35, 0, 22)
-Status.Position = UDim2.new(0, 32, 0, 53)
-Status.BackgroundTransparency = 1
-Status.Text = "ROLLBACK OFF"
-Status.TextColor3 = Color3.fromRGB(190, 190, 190)
-Status.TextSize = 14
-Status.Font = Enum.Font.GothamSemibold
-Status.TextXAlignment = Enum.TextXAlignment.Left
-Status.Parent = MainFrame
 
 local AutoRejoin = false
 local AutoBtn = Instance.new("TextButton")
-AutoBtn.Name = "AutoBtn"
-AutoBtn.Size = UDim2.new(0, 200, 0, 32)
-AutoBtn.Position = UDim2.new(0, 15, 0, 85)
-AutoBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
-AutoBtn.Text = "[ AUTO OFF ]"
+AutoBtn.Size = UDim2.new(0, 80, 0, 30)
+AutoBtn.Position = UDim2.new(0, 15, 0, 70)
+AutoBtn.BackgroundColor3 = Color3.fromRGB(55, 55, 65)
+AutoBtn.Text = "AUTO"
 AutoBtn.TextColor3 = Color3.fromRGB(230, 230, 230)
 AutoBtn.TextSize = 13
 AutoBtn.Font = Enum.Font.GothamBold
-AutoBtn.AutoLocalize = false
 AutoBtn.Parent = MainFrame
 
 local AutoCorner = Instance.new("UICorner")
-AutoCorner.CornerRadius = UDim.new(0, 9)
+AutoCorner.CornerRadius = UDim.new(0, 8)
 AutoCorner.Parent = AutoBtn
 
 AutoBtn.Activated:Connect(function()
     AutoRejoin = not AutoRejoin
-    if AutoRejoin then
-        AutoBtn.BackgroundColor3 = Color3.fromRGB(28, 150, 60)
-        AutoBtn.Text = "[ AUTO ON ]"
-        StatusDot.BackgroundColor3 = Color3.fromRGB(50, 220, 90)
-        Status.Text = "ROLLBACK ON"
-        Status.TextColor3 = Color3.fromRGB(130, 255, 160)
-    else
-        AutoBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
-        AutoBtn.Text = "[ AUTO OFF ]"
-        StatusDot.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
-        Status.Text = "ROLLBACK OFF"
-        Status.TextColor3 = Color3.fromRGB(190, 190, 190)
-    end
+    AutoBtn.BackgroundColor3 = AutoRejoin and Color3.fromRGB(30, 160, 60) or Color3.fromRGB(55, 55, 65)
+    StatusDot.BackgroundColor3 = AutoRejoin and Color3.fromRGB(50, 220, 90) or Color3.fromRGB(220, 50, 50)
 end)
 
 local RollbackBtn = Instance.new("TextButton")
-RollbackBtn.Name = "RollbackBtn"
-RollbackBtn.Size = UDim2.new(0, 200, 0, 42)
-RollbackBtn.Position = UDim2.new(0, 15, 0, 125) -- Inayos ko ang pwesto para hindi ma-cut
+RollbackBtn.Size = UDim2.new(1, -30, 0, 38)
+RollbackBtn.Position = UDim2.new(0, 15, 0, 100)
 RollbackBtn.BackgroundColor3 = Color3.fromRGB(190, 35, 35)
 RollbackBtn.Text = "ROLLBACK"
 RollbackBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 RollbackBtn.TextSize = 15
 RollbackBtn.Font = Enum.Font.GothamBold
-RollbackBtn.AutoLocalize = false
 RollbackBtn.Parent = MainFrame
 
 local BtnCorner = Instance.new("UICorner")
-BtnCorner.CornerRadius = UDim.new(0, 12)
+BtnCorner.CornerRadius = UDim.new(0, 10)
 BtnCorner.Parent = RollbackBtn
-
-RollbackBtn.MouseEnter:Connect(function()
-    RollbackBtn.BackgroundColor3 = Color3.fromRGB(215, 50, 50)
-end)
-
-RollbackBtn.MouseLeave:Connect(function()
-    RollbackBtn.BackgroundColor3 = Color3.fromRGB(190, 35, 35)
-end)
 
 local PlaceId = game.PlaceId
 local JobId = game.JobId
 
-local function DoRollback()
-    Status.Text = "Rolling back..."
-    Status.TextColor3 = Color3.fromRGB(255, 200, 60)
-    StatusDot.BackgroundColor3 = Color3.fromRGB(255, 200, 60)
+RollbackBtn.Activated:Connect(function()
     task.wait(0.1)
     TeleportService:TeleportToPlaceInstance(PlaceId, JobId, Player)
-end
+end)
 
-RollbackBtn.Activated:Connect(DoRollback)
-
-print("MEOW Loaded — Fixed & Safe!")
+print("✅ MEOW Secured Key System Loaded!")
