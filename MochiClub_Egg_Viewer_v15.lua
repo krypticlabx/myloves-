@@ -26,17 +26,6 @@ pcall(function()
         local AntiDieConnections = {}
         local StashedHumanoids = {}
 
-        -- Safety net every frame: if the current Humanoid drops to 0 HP
-        -- (e.g. during a long teleport), refill it before Died can finish.
-        RunService.Heartbeat:Connect(function()
-            if not Enabled then return end
-            local c = LocalPlayer.Character
-            local h = c and c:FindFirstChildOfClass("Humanoid")
-            if h and h.MaxHealth > 0 and h.Health <= 0 then
-                pcall(function() h.Health = h.MaxHealth end)
-            end
-        end)
-
         local function DisconnectAntiDie()
             for _, connection in ipairs(AntiDieConnections) do
                 pcall(function() connection:Disconnect() end)
@@ -816,15 +805,25 @@ local Main =
 Main.Name = "EggPanel"
 
 Main.Size =
-    UDim2.fromOffset(305, 330)
+    UDim2.fromOffset(305, 356)
 
+-- Anchored to the right-middle so the scaled panel stays on the right side.
+Main.AnchorPoint = Vector2.new(1, 0.5)
 Main.Position =
     UDim2.new(
         1,
-        -320,
+        -12,
         0.5,
-        -165
+        0
     )
+
+-- Shrinks the whole panel (background, text, buttons) to 80%.
+-- Change this number to make the panel bigger or smaller.
+do
+    local panelScale = Instance.new("UIScale")
+    panelScale.Scale = 0.8
+    panelScale.Parent = Main
+end
 
 Main.BackgroundColor3 =
     Color3.fromRGB(13, 15, 21)
@@ -1238,7 +1237,7 @@ RarityBar.Size =
     UDim2.new(1, -16, 0, 30)
 
 RarityBar.Position =
-    UDim2.fromOffset(8, 115)
+    UDim2.fromOffset(8, 141)
 
 RarityBar.BackgroundColor3 =
     Color3.fromRGB(14, 16, 22)
@@ -1458,6 +1457,95 @@ for index, rarity in ipairs(
     RarityButtons[rarity] =
         Button
 end
+
+--==================================================
+-- AUTO STEAL TOGGLES (Auto Divine / Eternal / Secret)
+-- Sits right under the Sort row. ON = the script steals every
+-- matching Egg it sees. Manual selection + Steal still works.
+--==================================================
+
+-- One table holds all Auto state so the script adds only one main-chunk local.
+shared.MochiAuto = {
+    On = { Divine = false, Eternal = false, Secret = false },
+    Buttons = {},
+    Running = false,   -- true while a run started by Auto is going
+    TriedUntil = {},   -- uid -> os.clock() time until which Auto skips that Egg
+}
+
+do
+local Auto = shared.MochiAuto
+
+local AutoBar = Instance.new("Frame")
+AutoBar.Name = "AutoBar"
+AutoBar.Size = UDim2.new(1, -16, 0, 22)
+AutoBar.Position = UDim2.fromOffset(8, 115)
+AutoBar.BackgroundTransparency = 1
+AutoBar.BorderSizePixel = 0
+AutoBar.ZIndex = 2
+AutoBar.Parent = Main
+
+local AutoLayout = Instance.new("UIListLayout")
+AutoLayout.FillDirection = Enum.FillDirection.Horizontal
+AutoLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+AutoLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+AutoLayout.Padding = UDim.new(0, 4)
+AutoLayout.SortOrder = Enum.SortOrder.LayoutOrder
+AutoLayout.Parent = AutoBar
+
+function Auto.Update(rarity)
+    local button = Auto.Buttons[rarity]
+    if not button then
+        return
+    end
+
+    local on = Auto.On[rarity] == true
+    local color = GetRarityColor(rarity)
+    local stroke = button:FindFirstChild("AutoStroke")
+
+    button.BackgroundColor3 = on and color or Color3.fromRGB(52, 52, 60)
+    button.BackgroundTransparency = on and 0.02 or 0.2
+
+    if rarity == "Secret" then
+        button.TextColor3 = on and Color3.new(1, 1, 1) or Color3.fromRGB(205, 205, 210)
+    else
+        button.TextColor3 = on and Color3.fromRGB(20, 20, 24) or Color3.fromRGB(205, 205, 210)
+    end
+
+    if stroke then
+        stroke.Color = on and color or Color3.fromRGB(90, 90, 100)
+        stroke.Transparency = on and 0.1 or 0.5
+    end
+end
+
+for index, rarity in ipairs({ "Divine", "Eternal", "Secret" }) do
+    local Button = Instance.new("TextButton")
+    Button.Name = "Auto" .. rarity
+    Button.Size = UDim2.fromOffset(92, 22)
+    Button.BorderSizePixel = 0
+    Button.Font = Enum.Font.GothamBold
+    Button.TextSize = 8
+    Button.Text = "Auto " .. rarity
+    Button.AutoButtonColor = true
+    Button.LayoutOrder = index
+    Button.ZIndex = 2
+    Button.Parent = AutoBar
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 4)
+    corner.Parent = Button
+
+    local stroke = Instance.new("UIStroke")
+    stroke.Name = "AutoStroke"
+    stroke.Thickness = 1
+    stroke.Parent = Button
+
+    Auto.Buttons[rarity] = Button
+    Auto.Update(rarity)
+end
+
+end -- AUTO toggle UI
+-- Click handlers are connected later in the file, after the Steal state
+-- variables exist (see "AUTO STEAL LOOP").
 
 --==================================================
 -- VISUAL TAB
@@ -2272,17 +2360,11 @@ local function StartAntiGuard()
     end))
 end
 
-shared.MochiAntiGuardEnabled = false
-
 local function ToggleAntiGuardInternal(state)
     if state == true then
         StartAntiGuard()
     else
         StopAntiGuard()
-    end
-    shared.MochiAntiGuardEnabled = (state == true)
-    if shared.MochiViewHoldRefresh then
-        pcall(shared.MochiViewHoldRefresh)
     end
     print("Anti Guard:", AntiGuardEnabled and "ON" or "OFF")
 end
@@ -2376,11 +2458,11 @@ Scrolling.Size =
         1,
         -16,
         1,
-        -193
+        -219
     )
 
 Scrolling.Position =
-    UDim2.fromOffset(8, 149)
+    UDim2.fromOffset(8, 175)
 
 Scrolling.BackgroundTransparency = 1
 Scrolling.BorderSizePixel = 0
@@ -3140,12 +3222,19 @@ local function CreateEggCard(
                 Cards[index].IsSelected =
                     isChecked
             end
-
-            if shared.MochiViewHoldRefresh then
-                pcall(shared.MochiViewHoldRefresh)
-            end
         end
     )
+
+    -- Lets Auto and Refresh tick/untick this card without a click.
+    -- Does NOT touch StealSelectionToken, so it never cancels a running Steal.
+    local function setChecked(value)
+        isChecked = value == true
+        CheckLabel.Text = ""
+        CheckBox.BackgroundColor3 = isChecked
+            and Color3.fromRGB(40, 120, 50)
+            or Color3.fromRGB(60, 60, 70)
+        Cards[index].IsSelected = isChecked
+    end
 
     local Icon =
         Instance.new("ImageLabel")
@@ -3458,7 +3547,8 @@ local function CreateEggCard(
 
         CurrentData = nil,
 
-        IsSelected = false
+        IsSelected = false,
+        SetChecked = setChecked
     }
 
     return Cards[index]
@@ -3825,6 +3915,10 @@ function Refresh()
         card.IsSelected =
             selected
 
+        if card.SetChecked then
+            card.SetChecked(selected)
+        end
+
         if card.CheckLabel then
 
             card.CheckLabel.Text =
@@ -3872,6 +3966,10 @@ function Refresh()
 
             Cards[index].IsSelected =
                 false
+
+            if Cards[index].SetChecked then
+                Cards[index].SetChecked(false)
+            end
 
             if Cards[index].CheckLabel then
 
@@ -5807,51 +5905,115 @@ end
 -- Exposed so DropThenPrompt (defined above this point) can release the view hold.
 shared.MochiStopCarryView = StopCarryViewHold
 
--- Keep the original viewpoint ONLY while an Egg is selected.
--- Anti Guard is deliberately unrelated to this behavior.
--- When no Egg is selected, restore the normal camera and movement controls.
-shared.MochiViewHoldRefresh = function()
-    local anyEggSelected = false
-    for _, card in ipairs(Cards) do
-        if card and card.IsSelected then
-            anyEggSelected = true
-            break
-        end
-    end
-
-    local shouldHoldView = anyEggSelected
-
-    if shouldHoldView then
-        if not CarryViewHold.Active then
-            local root = GetRoot()
-            if root then
-                local camera = workspace.CurrentCamera
-                if camera then
-                    local fix = shared.MochiEggFix
-                    if fix then
-                        fix.PickupCFrame = root.CFrame
-                        fix.PickupCamCFrame = camera.CFrame
-                    end
-                    pcall(function()
-                        StartCarryViewHold(root)
-                    end)
-                end
-            end
-        end
-    else
-        StopCarryViewHold()
-    end
-end
-
 local function TPAfterEggPickup()
-    -- TEMPORARY MODE: the initial selected-Egg pickup is the endpoint.
-    -- Do not start the post-pickup teleport/drop/re-pickup/return sequence.
-    -- Anti Guard remains controlled independently by its existing ON/OFF toggle.
     if not StealRunning then
         return false
     end
 
-    return Carrying == true
+    -- Wait briefly for EggState.CarryChanged so the exact UID from tp.txt
+    -- is available before DropEgg / CarryAgainAtDropPoint runs.
+    if not Carrying then
+        WaitUntilCarrying(nil, 0.75)
+    end
+
+    if not Carrying or type(CarryUid) ~= "string" then
+        return false
+    end
+
+    -- IMPORTANT:
+    -- The real character may travel to the drop point, but the player must
+    -- continue seeing the character and camera at the ORIGINAL Egg pickup
+    -- location until the Egg has actually been dropped.
+    local pickupRoot = GetRoot()
+    local viewHeld = false
+
+    if pickupRoot then
+        viewHeld = StartCarryViewHold(pickupRoot)
+    end
+
+    Returning = true
+    CurrentDropTarget = nil
+
+    local stepped = StepToBase()
+    if not stepped then
+        Returning = false
+        CurrentDropTarget = nil
+        StopFlyVisuals()
+        StopCarryViewHold()
+        return false
+    end
+
+    if not StealRunning or not Carrying then
+        Returning = false
+        CurrentDropTarget = nil
+        StopFlyVisuals()
+        StopCarryViewHold()
+        return false
+    end
+
+    -- DropThenPrompt:
+    -- 1. moves to the exact drop point
+    -- 2. drops the Egg
+    -- 3. finds that same dropped Egg
+    -- 4. picks it up again by the same UID
+    --
+    -- The camera/visual character remain at the original pickup spot
+    -- during all four steps.
+    local recoverUid = CarryUid
+    local droppedAndCarried = DropThenPrompt()
+
+    -- PATCH: if the dropped egg was not picked up again, go find the SAME
+    -- egg where it really is, pick it up and finish the drop chain again
+    -- instead of leaving it behind.
+    if not droppedAndCarried and StealRunning and type(recoverUid) == "string" then
+        local fix = shared.MochiEggFix
+        if fix and fix.CarryAgain then
+            for _ = 1, 3 do
+                if not StealRunning then
+                    break
+                end
+
+                if not (Carrying and CarryUid == recoverUid) then
+                    -- 1) stay at the drop point and try again
+                    local fallbackPos = CurrentDropTarget
+                        or Vector3.new(STEP_TARGET_X, STEP_Y, STEP_TARGET_Z)
+                    fix.CarryAgain(recoverUid, Vector3.new(fallbackPos.X, STEP_Y, fallbackPos.Z), 5)
+
+                    -- 2) like "re-select + Steal": let the record settle, then
+                    --    go to the egg's live position and pick it up
+                    if not (Carrying and CarryUid == recoverUid) and StealRunning then
+                        task.wait(1.5)
+                        local ft = fix.FreshTarget(recoverUid)
+                        if ft then
+                            local fp = GetEggTargetPosition(ft)
+                            if fp then
+                                fix.GoNear(fp, StealStopDistance)
+                            end
+                            fix.Collect(ft, FindEggObject(ft), fp)
+                        end
+                    end
+                end
+
+                if Carrying and CarryUid == recoverUid then
+                    droppedAndCarried = DropThenPrompt()
+                    if droppedAndCarried then
+                        break
+                    end
+                end
+            end
+        end
+    end
+
+    -- Only now reveal the real character and restore the camera.
+    -- At this point the real character is already at the drop point
+    -- and the dropped Egg has been picked up again.
+    StopCarryViewHold()
+
+    Returning = false
+    CurrentDropTarget = nil
+    StopFlyVisuals()
+
+    return droppedAndCarried
 end
 
 
@@ -6007,88 +6169,62 @@ do
         return best
     end
 
-    -- DIRECT CFrame teleport beside the selected Egg (including far-away Eggs).
-    -- Keep the existing character/camera view hold separate from Anti Guard.
+    -- Hop-teleport next to a position (forces streaming on far eggs).
     function Fix.GoNear(pos, stopDist)
-        if not pos or not StealRunning then
+        if not pos then
             return false
         end
-
         stopDist = stopDist or 3
         local character = LocalPlayer.Character
-        local root = GetRoot()
-        if not root or not character then
-            return false
-        end
 
-        local current = root.Position
-        local flatOffset = Vector3.new(pos.X - current.X, 0, pos.Z - current.Z)
-        local flatDistance = flatOffset.Magnitude
-        local heightDifference = math.abs(pos.Y - current.Y)
-
-        -- Already beside the Egg: do not teleport again.
-        if flatDistance <= stopDist and heightDifference <= 10 then
-            return true
-        end
-
-        -- Request the destination region first, then teleport in ONE CFrame assignment.
-        local offset = flatDistance > 0.1 and flatOffset.Unit * -math.min(2, flatDistance) or Vector3.zero
-        local destination = Vector3.new(pos.X + offset.X, pos.Y + 2, pos.Z + offset.Z)
-        pcall(function()
-            LocalPlayer:RequestStreamAroundAsync(destination, 1)
-        end)
-
-        root = GetRoot()
-        if not root or LocalPlayer.Character ~= character or not StealRunning then
-            return false
-        end
-
-        -- Anchor during the jump so the character can't free-fall (and die)
-        -- while the far-away ground is still streaming in.
-        local function Unanchor()
-            pcall(function()
-                local r = GetRoot()
-                if r then r.Anchored = false end
-            end)
-        end
-
-        local teleported = pcall(function()
-            root.Anchored = true
-            root.CFrame = CFrame.new(destination)
-            StopVelocity(root)
-        end)
-        if not teleported then
-            Unanchor()
-            return false
-        end
-
-        -- Wait (max ~4s) until there is ground under the destination.
-        local rayParams = RaycastParams.new()
-        rayParams.FilterType = Enum.RaycastFilterType.Exclude
-        rayParams.FilterDescendantsInstances = { character }
-        local groundDeadline = os.clock() + 4
-        while os.clock() < groundDeadline do
+        for _ = 1, 14 do
             if not StealRunning then
-                Unanchor()
                 return false
             end
-            if workspace:Raycast(destination, Vector3.new(0, -80, 0), rayParams) then
-                break
+            local root = GetRoot()
+            if not root or LocalPlayer.Character ~= character then
+                return false
             end
-            task.wait(0.1)
+
+            local cur = root.Position
+            local off = Vector3.new(pos.X - cur.X, 0, pos.Z - cur.Z)
+            local dist = off.Magnitude
+
+            if dist <= stopDist and math.abs(pos.Y - cur.Y) <= 10 then
+                return true
+            end
+
+            local nextPos
+            if dist > 45 then
+                local d = off.Unit * 45
+                nextPos = Vector3.new(cur.X + d.X, pos.Y + 2, cur.Z + d.Z)
+            else
+                -- land just beside the egg, on our side
+                local back = dist > 0.1 and (off.Unit * -math.min(1.5, dist)) or Vector3.zero
+                nextPos = Vector3.new(pos.X + back.X, pos.Y + 2, pos.Z + back.Z)
+            end
+
+            pcall(function()
+                LocalPlayer:RequestStreamAroundAsync(nextPos, 0.4)
+            end)
+
+            root = GetRoot()
+            if not root then
+                return false
+            end
+            pcall(function()
+                root.CFrame = CFrame.new(nextPos)
+            end)
+            StopVelocity(root)
+            RunService.Heartbeat:Wait()
+            RunService.Heartbeat:Wait()
         end
 
-        -- User-requested settle time before attempting the selected Egg pickup.
-        task.wait(1)
-        Unanchor()
-
-        root = GetRoot()
-        if not root or LocalPlayer.Character ~= character or not StealRunning then
+        local root = GetRoot()
+        if not root then
             return false
         end
-
-        local finalOffset = Vector3.new(pos.X - root.Position.X, 0, pos.Z - root.Position.Z)
-        return finalOffset.Magnitude <= stopDist + 4
+        return (Vector3.new(pos.X, 0, pos.Z) - Vector3.new(root.Position.X, 0, root.Position.Z)).Magnitude <= stopDist + 3
     end
 
     -- Pickup that only returns true when the game says we are carrying it.
@@ -6434,119 +6570,225 @@ local function MoveToEgg(
         return false
     end
 
-    -- DIRECT CFrame TELEPORT: skip walking/velocity steering so the
-    -- player can still use the mobile joystick without fighting this script.
     local fix = shared.MochiEggFix
+    local startedAt = os.clock()
+    local lastProgressAt = os.clock()
+    local lastDist = math.huge
 
-    if not StealRunning
-        or selectionToken ~= StealSelectionToken then
-        return false
-    end
+    -- PATCH: far egg -> hop-TP + force streaming, then wait for it to load
+    if fix and rootPart then
+        local flat = (Vector3.new(targetPosition.X, 0, targetPosition.Z)
+            - Vector3.new(rootPart.Position.X, 0, rootPart.Position.Z)).Magnitude
+        if flat > 60 then
+            fix.GoNear(targetPosition, StealStopDistance + 3)
 
-    -- Refresh the selected Egg's live position immediately before teleporting.
-    targetObject = FindEggObject(target) or targetObject
-    if targetObject and targetObject.Parent then
-        targetPosition = GetObjectPosition(targetObject) or targetPosition
-    end
-
-    character, humanoid, rootPart = GetCharacterParts()
-    if not character or not rootPart then
-        return false
-    end
-
-    -- Freeze the VIEW at the player's original standing spot before teleporting
-    -- the real character. The local proxy remains visible at the original spot,
-    -- while the real character performs the Egg teleport in the background.
-    if not CarryViewHold.Active then
-        local camera = workspace.CurrentCamera
-        if camera then
-            fix = fix or shared.MochiEggFix
-            if fix then
-                fix.PickupCFrame = rootPart.CFrame
-                fix.PickupCamCFrame = camera.CFrame
-            end
-            pcall(function()
-                StartCarryViewHold(rootPart)
-            end)
-        end
-    end
-
-    -- Keep the character upright and place it slightly above the Egg.
-    -- Do not run a Heartbeat movement loop; that was contributing to
-    -- joystick interference and small mobile freezes.
-    local teleportPosition = targetPosition + Vector3.new(0, 2.5, 0)
-    local teleported = pcall(function()
-        rootPart.AssemblyLinearVelocity = Vector3.zero
-        rootPart.AssemblyAngularVelocity = Vector3.zero
-        rootPart.CFrame = CFrame.lookAt(teleportPosition, targetPosition)
-        rootPart.AssemblyLinearVelocity = Vector3.zero
-        rootPart.AssemblyAngularVelocity = Vector3.zero
-    end)
-
-    if not teleported then
-        warn("[MochiClub Steal] CFrame teleport failed")
-        return false
-    end
-
-    -- Give the game one second to register the arrival before pickup.
-    local waitUntil = os.clock() + 1
-    while os.clock() < waitUntil do
-        if not StealRunning
-            or selectionToken ~= StealSelectionToken then
-            return false
-        end
-        task.wait(0.05)
-    end
-
-    -- Resolve the same selected Egg again in case its instance streamed in/out.
-    targetObject = FindEggObject(target) or targetObject
-    if targetObject and targetObject.Parent then
-        targetPosition = GetObjectPosition(targetObject) or targetPosition
-    end
-
-    if not StealRunning
-        or selectionToken ~= StealSelectionToken then
-        return false
-    end
-
-    local collected = false
-    if fix and type(fix.Collect) == "function" then
-        for attempt = 1, 3 do
-            if not StealRunning
-                or selectionToken ~= StealSelectionToken then
-                return false
-            end
-
-            collected = fix.Collect(target, targetObject, targetPosition)
-            if collected then
-                break
-            end
-
-            -- Small corrective snap only; no continuous movement loop.
-            character, humanoid, rootPart = GetCharacterParts()
-            if rootPart then
-                local currentPosition = targetPosition + Vector3.new(0, 2.5, 0)
-                pcall(function()
-                    rootPart.AssemblyLinearVelocity = Vector3.zero
-                    rootPart.AssemblyAngularVelocity = Vector3.zero
-                    rootPart.CFrame = CFrame.lookAt(currentPosition, targetPosition)
-                end)
-            end
-            if attempt < 3 then
+            local t0 = os.clock()
+            while os.clock() - t0 < 2
+                and StealRunning
+                and selectionToken == StealSelectionToken do
+                targetObject = FindEggObject(target)
+                if targetObject and targetObject.Parent then
+                    break
+                end
                 task.wait(0.1)
             end
+
+            if targetObject then
+                local p = GetObjectPosition(targetObject)
+                if p then
+                    targetPosition = p
+                end
+            end
         end
-    else
-        collected = CollectSelectedEgg(targetObject, targetPosition)
     end
 
-    if collected then
-        -- Preserve the file's existing post-pickup handling.
-        TPAfterEggPickup()
-        return true
+    local lastUpdate = 0
+
+    while StealRunning
+        and selectionToken == StealSelectionToken do
+
+        character,
+        humanoid,
+        rootPart =
+            GetCharacterParts()
+
+        if not character then
+            return false
+        end
+
+        -- If the Egg was cancelled/unselected, immediately stop.
+        if selectionToken ~= StealSelectionToken then
+            break
+        end
+
+        -- Always use the live position of the SAME selected Egg.
+        if targetObject
+            and targetObject.Parent then
+
+            local livePosition =
+                GetObjectPosition(
+                    targetObject
+                )
+
+            if livePosition then
+                targetPosition =
+                    livePosition
+            end
+        end
+
+        local targetXZ =
+            Vector3.new(
+                targetPosition.X,
+                rootPart.Position.Y,
+                targetPosition.Z
+            )
+
+        local current =
+            Vector3.new(
+                rootPart.Position.X,
+                rootPart.Position.Y,
+                rootPart.Position.Z
+            )
+
+        local offset =
+            targetXZ
+            - current
+
+        local distance =
+            offset.Magnitude
+
+        --==================================================
+        -- EXACT STOP
+        --==================================================
+
+        if distance <=
+            StealStopDistance then
+
+            -- We have reached the selected Egg.
+            -- Automatically collect it now; no tap/click is required.
+            HardStopCharacter(
+                humanoid,
+                rootPart
+            )
+
+            local collected = false
+
+            if fix then
+                for _ = 1, 3 do
+                    if not StealRunning
+                        or selectionToken ~= StealSelectionToken then
+                        break
+                    end
+                    collected = fix.Collect(
+                        target,
+                        targetObject,
+                        targetPosition
+                    )
+                    if collected then
+                        break
+                    end
+                    fix.GoNear(
+                        GetEggTargetPosition(target) or targetPosition,
+                        StealStopDistance
+                    )
+                end
+            else
+                collected = CollectSelectedEgg(
+                    targetObject,
+                    targetPosition
+                )
+            end
+
+            if collected then
+                -- TP ONLY after the selected Egg pickup attempt succeeds.
+                TPAfterEggPickup()
+                return true
+            end
+
+            return false
+        end
+
+        --==================================================
+        -- PHYSICS MOVEMENT AT REAL GAME SPEED
+        --==================================================
+
+        -- PATCH: stuck / too slow -> hop closer
+        if fix then
+            if distance < lastDist - 1 then
+                lastDist = distance
+                lastProgressAt = os.clock()
+            elseif os.clock() - lastProgressAt > 1
+                or os.clock() - startedAt > 8 then
+                fix.GoNear(targetPosition, StealStopDistance)
+                lastDist = math.huge
+                lastProgressAt = os.clock()
+            end
+        end
+
+        local now =
+            os.clock()
+
+        if now - lastUpdate
+            >= StealUpdateRate then
+
+            local direction =
+                offset.Unit
+
+            -- Read the real game WalkSpeed every update so any
+            -- game speed modifier is respected automatically.
+            local gameSpeed = 0
+
+            pcall(
+                function()
+                    gameSpeed =
+                        math.max(
+                            tonumber(
+                                humanoid.WalkSpeed
+                            )
+                            or 0,
+                            0
+                        )
+                end
+            )
+
+            if gameSpeed > 0 then
+
+                local currentVelocity =
+                    rootPart.AssemblyLinearVelocity
+
+                -- Move through physics at the current game speed.
+                -- This does NOT set CFrame and does NOT change WalkSpeed.
+                pcall(
+                    function()
+
+                        rootPart.AssemblyLinearVelocity =
+                            Vector3.new(
+                                direction.X
+                                    * gameSpeed,
+                                currentVelocity.Y,
+                                direction.Z
+                                    * gameSpeed
+                            )
+
+                        rootPart.AssemblyAngularVelocity =
+                            Vector3.zero
+                    end
+                )
+            end
+
+            lastUpdate = now
+        end
+
+        RunService.Heartbeat:Wait()
     end
 
-    warn("[MochiClub Steal] Pickup failed for selected Egg after CFrame teleport")
+    -- Cancellation: immediately release our movement control.
+    -- The game's own WalkSpeed remains untouched.
+    HardStopCharacter(
+        humanoid,
+        rootPart
+    )
+
     return false
 end
 
@@ -6555,17 +6797,18 @@ end
 -- ONE CLICK = RUN ALL SELECTED EGGS
 --==================================================
 
-StealButton.Activated:Connect(
-    function()
+-- forcedEggs is only given by Auto. The Steal button calls it with nothing,
+-- so it still uses the manual selection exactly as before.
+function shared.MochiAuto.Start(forcedEggs)
 
         if StealRunning then
             return
         end
 
-        local selectedEggs = {}
+        local selectedEggs = forcedEggs or {}
 
         for _, card in ipairs(
-            Cards
+            forcedEggs and {} or Cards
         ) do
 
             if card.IsSelected
@@ -6610,6 +6853,7 @@ StealButton.Activated:Connect(
             StealRunId
 
         StealRunning = true
+        shared.MochiAuto.Running = forcedEggs ~= nil
 
         StealButton.Text =
             "Stealing..."
@@ -6653,12 +6897,10 @@ StealButton.Activated:Connect(
                                     end
                                 end
 
-                                -- MULTI-SELECT MODE:
-                                -- Continue to the next selected Egg after this Egg's
-                                -- direct CFrame teleport, 1-second arrival wait, and pickup.
-                                -- MoveToEgg performs the 1-second wait for every Egg.
-                                if reached then
-                                    task.wait(0.05)
+                                -- Hold ~1 second after each egg (drop -> re-pickup -> return)
+                                -- so the egg is fully secured before the next selected egg starts.
+                                if StealRunning and selectionToken == StealSelectionToken then
+                                    task.wait(1)
                                 end
                             end
                         end
@@ -6686,9 +6928,6 @@ StealButton.Activated:Connect(
 
                 if thisRunId == StealRunId then
                     StealRunning = false
-                    if shared.MochiViewHoldRefresh then
-                        pcall(shared.MochiViewHoldRefresh)
-                    end
                 end
 
                 if thisRunId == StealRunId
@@ -6700,8 +6939,114 @@ StealButton.Activated:Connect(
                 end
             end
         )
+end
+
+-- The Steal button runs the manual selection (no arguments).
+StealButton.Activated:Connect(function()
+    shared.MochiAuto.Start()
+end)
+
+--==================================================
+-- AUTO STEAL LOOP
+-- Every second: if an Auto toggle is ON and nothing is stealing,
+-- collect every Egg of those rarities and steal them.
+-- An Egg that was just tried is skipped for 20s so a stuck Egg
+-- does not get retried every second.
+--==================================================
+
+do
+local Auto = shared.MochiAuto
+
+-- Ticks every visible Egg whose rarity Auto toggle is ON.
+local function AutoTickMatching()
+    for _, card in ipairs(Cards) do
+        local data = card.CurrentData
+
+        if data
+            and data.Record
+            and card.SetChecked
+            and Auto.On[NormalizeRarity(data.Rarity)] == true
+            and card.IsSelected ~= true then
+
+            card.SetChecked(true)
+        end
     end
-)
+end
+
+-- Only Eggs that are ticked AND whose rarity Auto is ON.
+local function CollectAutoEggs()
+    local list = {}
+    local now = os.clock()
+
+    for _, card in ipairs(Cards) do
+        local data = card.CurrentData
+
+        if data
+            and data.Record
+            and data.Uid
+            and card.IsSelected == true
+            and Auto.On[NormalizeRarity(data.Rarity)] == true then
+
+            local uid = tostring(data.Uid)
+
+            if (Auto.TriedUntil[uid] or 0) <= now then
+                table.insert(list, {
+                    Data = data,
+                    Uid = uid,
+                    Category = tostring(data.Category or ""),
+                })
+            end
+        end
+    end
+
+    return list
+end
+
+task.spawn(function()
+    while ScreenGui.Parent do
+        task.wait(1)
+
+        local anyOn = Auto.On.Divine
+            or Auto.On.Eternal
+            or Auto.On.Secret
+
+        if anyOn then
+            AutoTickMatching()
+
+            if not StealRunning then
+                local eggs = CollectAutoEggs()
+
+                if #eggs > 0 then
+                    local now = os.clock()
+                    for _, egg in ipairs(eggs) do
+                        Auto.TriedUntil[egg.Uid] = now + 20
+                    end
+
+                    pcall(Auto.Start, eggs)
+                end
+            end
+        end
+    end
+end)
+
+for rarity, button in pairs(Auto.Buttons) do
+    button.Activated:Connect(function()
+        Auto.On[rarity] = not Auto.On[rarity]
+        Auto.Update(rarity)
+
+        -- Turning every Auto OFF stops an Auto run after the current Egg.
+        -- A manual Steal run is never cancelled by this.
+        local anyOn = Auto.On.Divine
+            or Auto.On.Eternal
+            or Auto.On.Secret
+
+        if not anyOn and StealRunning and shared.MochiAuto.Running then
+            StealSelectionToken = StealSelectionToken + 1
+        end
+    end)
+end
+
+end -- AUTO steal loop
 
 -- TOGGLE UI
 --==================================================
